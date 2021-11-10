@@ -94,6 +94,7 @@ class Ride(Base):
                 that produces appropriate `sqlalchemy.schema.Table` objects.
 
     """
+    __tablename__ = 'rides'
     id = Column(UUID)
     vehicle_id = Column(UUID, ForeignKey('vehicles.id'))
     user_email = Column(String, ForeignKey('users.email'))

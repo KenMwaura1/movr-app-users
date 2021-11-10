@@ -9,7 +9,7 @@ from uuid import uuid4
 from sqlalchemy.orm import aliased
 from sqlalchemy.sql.expression import func
 
-from movr.models import LocationHistory, Ride, User, Vehicle
+from .models import LocationHistory, Ride, User, Vehicle
 
 
 def start_ride_txn(session, vehicle_id, user_email):
@@ -192,9 +192,8 @@ def find_most_recent_timestamp_subquery(session):
     # (SELECT vehicle_id, MAX(ts) AS max_ts FROM location_history
     #   GROUP BY vehicle_id) AS g
     l = LocationHistory
-    g = session.query(l.vehicle_id, func.max(l.ts).label("max_ts")). \
+    return session.query(l.vehicle_id, func.max(l.ts).label("max_ts")). \
         group_by(l.vehicle_id).subquery()
-    return g
 
 
 def get_vehicles_txn(session, max_records):
@@ -401,7 +400,7 @@ def get_vehicle_and_location_history_txn(session, vehicle_id, max_locations):
     Inputs
     ------
 
-    vehcile_id (str(uuid)) - vehicle identifier
+    vehicle_id (str(uuid)) - vehicle identifier
     max_locations - maximum number of location_history rows to return
     """
     vehicle = session.query(Vehicle).filter(Vehicle.id == vehicle_id).first()
@@ -434,9 +433,8 @@ def parse_phone_numbers(phone_number_string):
     Returns:
         phone_numbers {List} -- One string element per user phone number.
     """
-    phone_numbers = [phone_number.strip()
+    return [phone_number.strip()
                      for phone_number in phone_number_string.split(',')]
-    return phone_numbers
 
 
 def add_user_txn(session, email, last_name, first_name, phone_numbers):
@@ -454,12 +452,14 @@ def add_user_txn(session, email, last_name, first_name, phone_numbers):
             strings. Empty array is OK.
     """
     phone_numbers = parse_phone_numbers(phone_numbers)
-    # FOR THE LAB: ADDING USERS, YOU WILL NEED TO MODIFY THIS FUNCTION TO ADD
-    # A NEW ROW TO THE `users` TABLE REPRESENTING THE NEWLY REGISTERED USER.
-    # YOU MAY WANT TO CONSULT THE SQLALCHEMY DOCUMENTATION FOR THIS METHOD:
-    # https://docs.sqlalchemy.org/en/13/orm/session_api.html#sqlalchemy.orm.session.Session.add
+    user = User(email=email, first_name=first_name, last_name=last_name, phone_numbers=phone_numbers)
+    try:
+        session.add(user)
+        return True
+    except Exception as e:
+        print(e)
+        return False
 
-    return True
 
 
 def get_user_txn(session, email):
@@ -517,16 +517,18 @@ def get_active_ride_txn(session, vehicle_id, email):
     Finds the ride
     """
     try:
-        ride, vehicle, start_location = session.query(Ride, Vehicle,
-                                                      LocationHistory). \
-            filter(Ride.vehicle_id == vehicle_id). \
-            filter(Ride.user_email == email). \
-            filter(Ride.end_ts == None). \
-            filter(Vehicle.id == Ride.vehicle_id). \
-            filter(Vehicle.in_use == True). \
-            filter(LocationHistory.vehicle_id == vehicle_id). \
-            filter(LocationHistory.ts == Ride.start_ts). \
-            first()
+        ride, vehicle, start_location = (
+            session.query(Ride, Vehicle, LocationHistory)
+            .filter(Ride.vehicle_id == vehicle_id)
+            .filter(Ride.user_email == email)
+            .filter(Ride.end_ts is None)
+            .filter(Vehicle.id == Ride.vehicle_id)
+            .filter(Vehicle.in_use == True)
+            .filter(LocationHistory.vehicle_id == vehicle_id)
+            .filter(LocationHistory.ts == Ride.start_ts)
+            .first()
+        )
+
     except TypeError:  # Criteria not met for both ride & vehicle
         return None
 
